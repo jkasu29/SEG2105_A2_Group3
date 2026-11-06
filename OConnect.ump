@@ -1,0 +1,158 @@
+// SEG2105 - Assignment 2 - Question 1 (Bonus: class diagram generated from Umple)
+// O-Connect City Transit Management System - Domain model
+// Paste this file into https://try.umple.org to view / regenerate the class diagram.
+namespace oconnect;
+
+// ---------------------------------------------------------------- Enumerations
+enum TransitMode { Bus, OTrain }
+
+// ---------------------------------------------------------------- The network
+class Stop {
+  unique String code;
+  String name;
+  String location;            // e.g., GPS coordinates "45.4057,-75.6680"
+}
+
+class Route {
+  unique String number;       // e.g., "95", "1"
+  TransitMode mode;           // Bus route or O-Train line
+  // origin / destination are derived from the ordered RouteStops
+  String origin = { endStopName(true) }
+  String destination = { endStopName(false) }
+
+  String endStopName(boolean first) {
+    RouteStop best = null;
+    for (RouteStop rs : getRouteStops()) {
+      if (best == null || (first ? rs.getPosition() < best.getPosition()
+                                 : rs.getPosition() > best.getPosition())) { best = rs; }
+    }
+    return best == null ? "" : best.getStop().getName();
+  }
+}
+
+// Association class: position of a stop in a route and travel time from the start
+associationClass RouteStop {
+  Integer position;
+  Integer travelTimeMinutes;
+  * Stop stop;                // each stop has many RouteStops (served by many routes)
+  2..* Route route;           // each route has at least 2 RouteStops (origin ... destination)
+}
+
+// ---------------------------------------------------------------- The fleet
+class Vehicle {
+  abstract;
+  unique Integer fleetNumber;
+  Integer capacity;
+}
+
+// The vehicle used for each scheduled run (Trip)
+association { 1 Vehicle vehicle -- * Trip trips; }
+
+class Bus {
+  isA Vehicle;
+  BusBodyType bodyType;
+}
+
+class Train {
+  isA Vehicle;
+  Integer numberOfCars;
+}
+
+enum BusBodyType { Standard, Articulated, DoubleDecker }
+
+// ---------------------------------------------------------------- The staff
+class Driver {
+  String name;
+  unique String employeeNumber;
+  Integer yearsOfExperience;
+  [yearsOfExperience >= 0]
+  Boolean isTrainee = { getYearsOfExperience() < 2 }
+  Boolean canOperateTrains = { getYearsOfExperience() >= 10 }
+
+  0..1 mentor -- * Driver trainees;     // a trainee has exactly one senior mentor
+  1 -- * Incident incidents;
+  1 -- * Shift shifts;
+}
+
+// One shift = one working day of one driver
+class Shift {
+  Date date;
+  Double hoursWorked;
+  Double overtimeHours = { getHoursWorked() > 7.5 ? getHoursWorked() - 7.5 : 0.0 }
+}
+
+// Association class: during a shift, the driver covers a route (re-assignment = another Trip)
+associationClass Trip {
+  Time startTime;
+  Time endTime;
+  1..* Shift shift;           // each shift has at least one Trip (re-assignment = another Trip)
+  * Route route;              // each route is covered by many Trips
+}
+
+class Incident {
+  Date date;
+  String description;
+  IncidentType type;
+  Severity severity;
+}
+
+enum IncidentType { Accident, Fine }
+enum Severity { Minor, Major }
+
+// ---------------------------------------------------------------- Riders and fares
+class Rider {
+  String name;
+  unique String customerNumber;
+  1 owner -- * FareMedium fareMedia;
+  1 -- * TripPlan tripPlans;
+
+  void planTrip(Stop from, Stop to) { /* asks the system for routes connecting from -> to */ }
+}
+
+class FareMedium {
+  abstract;
+  unique String mediumNumber;
+}
+
+class PaperTicket {
+  isA FareMedium;
+  Boolean used;               // valid for a single trip
+}
+
+class MonthlyPass {
+  isA FareMedium;
+  Date expiryDate;            // unlimited travel until expiry
+}
+
+class PrestoCard {
+  isA FareMedium;
+  Double balance;
+  Double lowBalanceThreshold;
+  1 -- * LowBalanceNotification notifications;
+
+  void reload(Double amount) { setBalance(getBalance() + amount); }
+  void deductFare(Double fare) { setBalance(getBalance() - fare); }
+}
+
+class LowBalanceNotification {
+  Date dateSent;
+  Time timeSent;
+  Double balanceAtSending;
+}
+
+// Each time a fare medium is used to board a vehicle
+class Boarding {
+  Date date;
+  Time time;
+  Double fareCharged;
+  * -- 1 FareMedium fareMedium;
+  * -- 1 Vehicle vehicle;
+}
+
+// A rider's request for the route(s) connecting two stops
+class TripPlan {
+  Date dateRequested;
+  * plansFrom -- 1 Stop start;
+  * plansTo -- 1 Stop destination;
+  * -- * Route suggestedRoutes;
+}
